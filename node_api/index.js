@@ -1,12 +1,14 @@
 const Mongoose = require('mongoose');
-const Express, { Router } = require('express');
+const Express = require('express');
+const Router = require('express').Router;
 const BodyParser = require('body-parser');
+const Cors = require('cors');
 
 /**
  * DB connection & Schema definition
  */
 
-Mongoose.connect('mongodb://localhost:27018,localhost:27019,localhost:27020/test?replicaSet=rs0', {
+Mongoose.connect('mongodb://mongo1:27018,mongo2:27019,mongo3:27020/test?replicaSet=rs0', {
   useNewUrlParser: true,
   useFindAndModify: false,
   useCreateIndex: true,
@@ -14,22 +16,27 @@ Mongoose.connect('mongodb://localhost:27018,localhost:27019,localhost:27020/test
   throw err;
 });
 
+const ROLES_TABLE = 'roles';
+const USERS_TABLE = 'users';
+
 const roleSchema = new Mongoose.Schema({
   name: { type: Mongoose.Schema.Types.String, required: true },
 }, { timestamps: true });
-const Role = Mongoose.model('Role', roleSchema);
+const Role = Mongoose.model(ROLES_TABLE, roleSchema);
 
 const userSchema = new Mongoose.Schema({
   email: { type: Mongoose.Schema.Types.String, required: true },
   firstName: { type: Mongoose.Schema.Types.String, required: false },
   lastName: { type: Mongoose.Schema.Types.String, required: false },
+  role: { type: Mongoose.Schema.Types.ObjectId, reqired: true }, 
 }, { timestamps: true });
-const User = Mongoose.model('User', userSchema);
+const User = Mongoose.model(USERS_TABLE, userSchema);
 
 /**
  * Express server setup & test endpoints definition
  */
 
+const PORT = 5000;
 const app = Express();
 const server = require('http').Server(app);
 const router = new Router();
@@ -39,33 +46,44 @@ router.route('/users').post(async (req, res) => {
   
   try {
     session.startTransaction();
+
     const options = { session };
-    let existingRole = await Role.find({ name: req.body.role });
+    let existingRole = await Role.findOne({ name: req.body.role });
 
     if (!existingRole) {
-      existingRole = await Role.create([{ name: req.body.role }], options)[0];
+      existingRole = (await Role.create([{ name: req.body.role }], options))[0];
     }
 
     const userBody = {
       email: req.body.email,
       firstName: req.body.firstName,
       lastName: req.body.lastName,
+      role: existingRole._id,
     };
-    const createdUser = await User.create([userBody], options);
+    const createdUser = (await User.create([userBody], options))[0];
 
-    await session.commitTransaction();
-    session.endSession();
+    session.commitTransaction();
     res.status(201).json(createdUser);
   } catch (e) {
-    await session.abortTransaction();
-    session.endSession();
+    session.abortTransaction();
     res.status(500).json(e);
   }
 });
 
 router.route('/users').get(async (req, res) => {
   try {
-    const result = await User.find();
+    const result = await User.aggregate([
+      {
+        $lookup: {
+          from: ROLES_TABLE,
+          localField: 'role',
+          foreignField: '_id',
+          as: 'role',
+        }
+      }, {
+        $unwind: '$role',
+      }
+    ]);
 
     res.status(200).json(result);
   } catch (e) {
@@ -78,7 +96,7 @@ app.use(BodyParser.json({ limit: '10mb' }));
 app.use(BodyParser.urlencoded({ limit: '10mb', extended: false }));
 app.use(router);
 
-server.listen(5000, (error) => {
+server.listen(PORT, (error) => {
   if (error) {
     console.log(`
           \n\n
