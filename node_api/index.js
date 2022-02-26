@@ -8,12 +8,10 @@ const Cors = require('cors');
  * DB connection & Schema definition
  */
 
-Mongoose.connect('mongodb://mongo1:27018,mongo2:27019,mongo3:27020/test?replicaSet=rs0', {
-  useNewUrlParser: true,
-  useFindAndModify: false,
-  useCreateIndex: true,
-}, (err) => {
-  throw err;
+Mongoose.connect('mongodb://mongo1:27018,mongo2:27019,mongo3:27020/test?replicaSet=rs0', (err) => {
+  if (err) {
+    throw err;
+  }
 });
 
 const ROLES_TABLE = 'roles';
@@ -28,7 +26,7 @@ const userSchema = new Mongoose.Schema({
   email: { type: Mongoose.Schema.Types.String, required: true },
   firstName: { type: Mongoose.Schema.Types.String, required: false },
   lastName: { type: Mongoose.Schema.Types.String, required: false },
-  role: { type: Mongoose.Schema.Types.ObjectId, reqired: true }, 
+  role: { type: Mongoose.Schema.Types.ObjectId, reqired: true },
 }, { timestamps: true });
 const User = Mongoose.model(USERS_TABLE, userSchema);
 
@@ -43,7 +41,7 @@ const router = new Router();
 
 router.route('/users').post(async (req, res) => {
   const session = await Mongoose.connection.startSession();
-  
+
   try {
     session.startTransaction();
 
